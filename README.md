@@ -1,139 +1,87 @@
-# ============================================================
-#  PORTFOLIO-RISIKO-KENNZAHLEN  |  R
-#  Volatilitaet + Value-at-Risk + Maximum Drawdown + Korrelation
-#
-#  Daniel Reiger
-# ============================================================
+# Portfolio-Risiko-Kennzahlen (R)
 
-# ---- Paket installieren (nur beim ersten Mal noetig) ----
-if (!requireNamespace("quantmod", quietly = TRUE)) install.packages("quantmod")
-library(quantmod)   # laedt Kursdaten von Yahoo Finance
+Ein schlankes R-Tool zur Quantifizierung von Marktrisiken eines Aktienportfolios.
+Es lädt Kursdaten von Yahoo Finance, berechnet die zentralen Risikokennzahlen und
+zeigt über die Korrelationsmatrix und den Diversifikationseffekt, wie sich das
+Risiko durch Streuung über mehrere Titel verändert.
 
-# ============================================================
-#  STEP 1: EINSTELLUNGEN  (hier kannst du alles aendern)
-# ============================================================
-ticker   = c("BMW.DE", "SAP.DE", "ALV.DE", "SIE.DE")  # welche Aktien?
+Ein einzelner Ticker liefert weiterhin die klassische Einzelaktien-Analyse – das
+Tool funktioniert für ein wie für mehrere Wertpapiere.
+
+## Kennzahlen
+
+- **Volatilität (p.a.)** – annualisierte Standardabweichung der Tagesrenditen
+- **Value-at-Risk (historisch)** – empirisches (1 − Konfidenz)-Quantil der Tagesrenditen
+- **Maximum Drawdown** – größter Wertverlust vom Hoch bis zum darauffolgenden Tief
+- **Korrelationsmatrix** – Gleichlauf der einzelnen Titel
+- **Diversifikationseffekt** – Anteil des Risikos, der durch Streuung wegfällt
+
+## Voraussetzungen
+
+- R (ab Version 4.x)
+- Paket [`quantmod`](https://cran.r-project.org/package=quantmod) (wird beim ersten Lauf
+  automatisch installiert)
+
+## Nutzung
+
+1. Repository klonen oder `portfolio_risiko_kennzahlen.R` herunterladen.
+2. In **STEP 1** die Einstellungen anpassen:
+
+```r
+ticker   = c("BMW.DE", "SAP.DE", "ALV.DE", "SIE.DE")  # gewünschte Titel
 gewichte = c(0.25,     0.25,     0.25,     0.25)       # Portfoliogewichte
-conf     = 0.95     # Konfidenzniveau fuer den VaR (95%)
-jahre    = 2        # wie viele Jahre Historie?
+conf     = 0.95     # Konfidenzniveau für den VaR
+jahre    = 2        # Länge der Kurshistorie in Jahren
+```
 
-# Tipp: Fuer eine EINZELNE Aktie einfach nur einen Ticker eintragen,
-#       z.B. ticker = "BMW.DE" und gewichte = 1.
+3. Das Skript ausführen (z. B. `source("portfolio_risiko_kennzahlen.R")` oder in RStudio).
 
-# Gewichte auf Summe 1 normieren (falls sie nicht exakt aufgehen)
-gewichte = gewichte / sum(gewichte)
+Die Gewichte werden automatisch auf eine Summe von 1 normiert. Für eine einzelne
+Aktie genügt `ticker = "BMW.DE"` und `gewichte = 1`.
 
-# Sicherheitscheck: gleich viele Gewichte wie Ticker?
-if (length(ticker) != length(gewichte))
-  stop("Anzahl Ticker und Anzahl Gewichte stimmen nicht ueberein.")
+## Beispiel-Output
 
-# ============================================================
-#  STEP 2: KURSDATEN LADEN (alle Titel) UND ZUSAMMENFUEHREN
-# ============================================================
-message("Lade Kursdaten fuer ", length(ticker), " Titel ...")
+```
+==================================================
+  PORTFOLIO-RISIKO-REPORT
+==================================================
+  Titel:
+    BMW.DE    Gewicht 25.0 %
+    SAP.DE    Gewicht 25.0 %
+    ALV.DE    Gewicht 25.0 %
+    SIE.DE    Gewicht 25.0 %
+--------------------------------------------------
+  Volatilität (p.a.):             21.4 %
+  Value-at-Risk (95%):             2.1 %  pro Tag
+  Maximum Drawdown:               28.7 %
+  Diversifikationseffekt:         14.3 %
+==================================================
+```
 
-preis_liste = list()
-for (t in ticker) {
-  kurse = getSymbols(t, src = "yahoo",
-                     from = Sys.Date() - 365 * jahre,
-                     auto.assign = FALSE)
-  preis_liste[[t]] = Ad(kurse)   # Ad() = um Dividenden/Splits bereinigt
-}
+(Werte sind illustrativ und hängen von Titelauswahl und Zeitraum ab.)
 
-# Alle Kursreihen zu EINER Tabelle zusammenfuegen und auf
-# gemeinsame Handelstage reduzieren (Zeilen mit Luecken entfernen)
-preise_xts = na.omit(do.call(merge, preis_liste))
-colnames(preise_xts) = ticker
-preise_mat = as.matrix(preise_xts)
+Zusätzlich gibt das Skript die Korrelationsmatrix der Tagesrenditen aus und
+zeichnet ein Histogramm der Portfolio-Tagesrenditen mit eingezeichneter VaR-Schwelle.
 
-message("Gemeinsame Handelstage: ", nrow(preise_mat))
+## Methodik & Annahmen
 
-# ============================================================
-#  STEP 3: TAGESRENDITEN BERECHNEN (je Titel)
-# ============================================================
-# Rendite = prozentuale Veraenderung von einem Tag zum naechsten.
-# diff() bildet die Differenz spaltenweise, head(..., -1) liefert
-# den jeweiligen Vortagespreis als Nenner.
-renditen_mat = diff(preise_mat) / head(preise_mat, -1)
+- **Renditen:** einfache Tagesrenditen auf Basis dividenden- und splitbereinigter
+  Schlusskurse (`Ad()`).
+- **Portfoliorendite:** gewichtete Summe der Einzelrenditen; die Gewichte gelten
+  über den gesamten Zeitraum (kein Rebalancing-Modell).
+- **VaR:** rein historisch geschätzt – er unterstellt, dass die vergangene
+  Renditeverteilung die Zukunft beschreibt, und macht keine Verteilungsannahme.
+- **Annualisierung:** Volatilität wird mit √252 hochskaliert (≈ Börsentage pro Jahr).
+- **Datengrundlage:** nur Handelstage, an denen für *alle* Titel Kurse vorliegen
+  (gemeinsame Schnittmenge nach `na.omit`).
 
-# ============================================================
-#  STEP 4: PORTFOLIO-RENDITE (gewichtet)
-# ============================================================
-# Taegliche Portfoliorendite = gewichtete Summe der Einzelrenditen
-port_rend = as.numeric(renditen_mat %*% gewichte)
+## Mögliche Erweiterungen
 
-# Portfolio-Preisindex (Start = 100) als Basis fuer den Drawdown
-port_index = 100 * cumprod(1 + port_rend)
+- Parametrische (Varianz-Kovarianz-) und Monte-Carlo-basierte VaR-Schätzung
+- Backtesting der VaR-Güte (z. B. Ampel-/Kupiec-Test)
+- Marginaler und Komponenten-VaR je Titel
+- Rollierende Kennzahlen über die Zeit
 
-# ============================================================
-#  STEP 5: DIE DREI RISIKO-KENNZAHLEN (Portfolio)
-# ============================================================
-# (1) VOLATILITAET (annualisiert)
-#     Standardabweichung der Tagesrenditen, hochgerechnet aufs Jahr.
-#     252 = ungefaehr die Anzahl Boersentage pro Jahr.
-vola_taeglich = sd(port_rend)
-vola_jahr     = vola_taeglich * sqrt(252)
+## Autor
 
-# (2) VALUE-AT-RISK (historisch)
-#     Das schlechteste (1 - conf)-Quantil der echten Renditen.
-#     Bei conf = 0.95 also das 5%-Quantil -> als Verlust positiv.
-VaR = -quantile(port_rend, 1 - conf)
-
-# (3) MAXIMUM DRAWDOWN
-#     Groesster Verlust von einem bisherigen Hoechststand bis zum Tief.
-hoechststand = cummax(port_index)               # laufendes Allzeithoch
-drawdowns    = (port_index - hoechststand) / hoechststand
-max_drawdown = -min(drawdowns)                  # als positive Zahl
-
-# ============================================================
-#  STEP 6: KORRELATION & DIVERSIFIKATIONSEFFEKT
-# ============================================================
-# Korrelationsmatrix der Einzelrenditen: zeigt, wie stark sich
-# die Titel gemeinsam bewegen (1 = Gleichlauf, 0 = unabhaengig).
-korr = cor(renditen_mat)
-
-# Annualisierte Vola jedes Einzeltitels
-vola_einzel = apply(renditen_mat, 2, sd) * sqrt(252)
-
-# Risiko OHNE Diversifikation = gewichtete Summe der Einzelvolas
-# (so waere die Vola, wenn sich alle Titel perfekt gleich bewegten)
-vola_ohne_diversifikation = sum(gewichte * vola_einzel)
-
-# Diversifikationseffekt = wie viel Risiko durch die Streuung wegfaellt
-diversifikation = 1 - vola_jahr / vola_ohne_diversifikation
-
-# ============================================================
-#  STEP 7: ERGEBNIS AUSGEBEN
-# ============================================================
-cat("\n", strrep("=", 50), "\n", sep = "")
-cat("  PORTFOLIO-RISIKO-REPORT\n")
-cat(strrep("=", 50), "\n", sep = "")
-cat("  Titel:\n")
-for (i in seq_along(ticker))
-  cat(sprintf("    %-8s  Gewicht %4.1f %%\n", ticker[i], gewichte[i] * 100))
-cat(strrep("-", 50), "\n", sep = "")
-cat(sprintf("  Volatilitaet (p.a.):          %6.1f %%\n", vola_jahr * 100))
-cat(sprintf("  Value-at-Risk (%g%%):          %6.1f %%  pro Tag\n",
-            conf * 100, VaR * 100))
-cat(sprintf("  Maximum Drawdown:             %6.1f %%\n", max_drawdown * 100))
-cat(sprintf("  Diversifikationseffekt:       %6.1f %%\n", diversifikation * 100))
-cat(strrep("=", 50), "\n", sep = "")
-cat("  Lesart VaR: An 95% der Tage liegt der Tagesverlust\n")
-cat("              des Portfolios unter dem VaR-Wert.\n")
-cat("  Lesart Diversifikation: So viel Risiko faellt durch\n")
-cat("              das Streuen ueber mehrere Titel weg.\n\n")
-
-cat("  Korrelationsmatrix der Tagesrenditen:\n")
-print(round(korr, 2))
-cat("\n")
-
-# ============================================================
-#  STEP 8: GRAFIK - Renditeverteilung mit VaR-Linie
-# ============================================================
-hist(port_rend, breaks = 50, col = "#D6E4F0", border = "white",
-     main = "Tagesrenditen: Portfolio",
-     xlab = "Tagesrendite", ylab = "Haeufigkeit")
-abline(v = -VaR, col = "#FF6600", lwd = 2, lty = 2)
-legend("topleft", bty = "n",
-       legend = paste0("VaR (", conf * 100, "%)"),
-       col = "#FF6600", lwd = 2, lty = 2)
+Daniel Reiger
