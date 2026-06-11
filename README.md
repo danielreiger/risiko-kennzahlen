@@ -1,73 +1,87 @@
-# Aktien-Risiko-Kennzahlen
+# Portfolio-Risiko-Kennzahlen (R)
 
-Ein kleines Tool in **R**, das aus historischen Kursdaten automatisiert die
-wichtigsten Marktrisiko-Kennzahlen einer Aktie berechnet und ausgibt.
+Ein schlankes R-Tool zur Quantifizierung von Marktrisiken eines Aktienportfolios.
+Es lädt Kursdaten von Yahoo Finance, berechnet die zentralen Risikokennzahlen und
+zeigt über die Korrelationsmatrix und den Diversifikationseffekt, wie sich das
+Risiko durch Streuung über mehrere Titel verändert.
 
-Das Projekt entstand aus persönlichem Interesse an quantitativem
-Risikomanagement und der Automatisierung von Risikoreportings.
+Ein einzelner Ticker liefert weiterhin die klassische Einzelaktien-Analyse – das
+Tool funktioniert für ein wie für mehrere Wertpapiere.
 
-## Was das Tool macht
+## Kennzahlen
 
-Es lädt die Kurshistorie einer Aktie von Yahoo Finance und berechnet drei
-klassische Risiko-Kennzahlen:
+- **Volatilität (p.a.)** – annualisierte Standardabweichung der Tagesrenditen
+- **Value-at-Risk (historisch)** – empirisches (1 − Konfidenz)-Quantil der Tagesrenditen
+- **Maximum Drawdown** – größter Wertverlust vom Hoch bis zum darauffolgenden Tief
+- **Korrelationsmatrix** – Gleichlauf der einzelnen Titel
+- **Diversifikationseffekt** – Anteil des Risikos, der durch Streuung wegfällt
 
-- **Volatilität (annualisiert)** – die Schwankungsbreite der Renditen,
-  hochgerechnet auf ein Jahr. Standardmaß für das Risiko einer Position.
-- **Value-at-Risk (95%, historisch)** – der Verlust, der an 95 % der Tage
-  nicht überschritten wird. Berechnet über das empirische Quantil der
-  Renditeverteilung, ohne Verteilungsannahme.
-- **Maximum Drawdown** – der größte Wertverlust von einem bisherigen
-  Höchststand bis zum darauffolgenden Tief.
+## Voraussetzungen
 
-Zusätzlich wird die Renditeverteilung als Histogramm mit eingezeichneter
-VaR-Grenze visualisiert.
+- R (ab Version 4.x)
+- Paket [`quantmod`](https://cran.r-project.org/package=quantmod) (wird beim ersten Lauf
+  automatisch installiert)
 
-## Verwendete Verfahren
+## Nutzung
 
-- empirische Quantil-Schätzung (historischer Value-at-Risk)
-- Streuungs- und Drawdown-Statistik aus Zeitreihen von Tagesrenditen
-- automatisierte Datenbeschaffung und Reporting in R
-
-## Verwendung
-
-Voraussetzung ist eine R-Installation. Das benötigte Paket wird beim ersten
-Start automatisch installiert.
+1. Repository klonen oder `portfolio_risiko_kennzahlen.R` herunterladen.
+2. In **STEP 1** die Einstellungen anpassen:
 
 ```r
-source("Risiko_Kennzahlen.R")
+ticker   = c("BMW.DE", "SAP.DE", "ALV.DE", "SIE.DE")  # gewünschte Titel
+gewichte = c(0.25,     0.25,     0.25,     0.25)       # Portfoliogewichte
+conf     = 0.95     # Konfidenzniveau für den VaR
+jahre    = 2        # Länge der Kurshistorie in Jahren
 ```
 
-Die Aktie und die Parameter lassen sich oben im Skript anpassen:
+3. Das Skript ausführen (z. B. `source("portfolio_risiko_kennzahlen.R")` oder in RStudio).
 
-```r
-ticker = "BMW.DE"   # zu analysierende Aktie
-conf   = 0.95       # Konfidenzniveau für den VaR
-jahre  = 2          # Länge der Kurshistorie
-```
+Die Gewichte werden automatisch auf eine Summe von 1 normiert. Für eine einzelne
+Aktie genügt `ticker = "BMW.DE"` und `gewichte = 1`.
 
-## Beispiel-Ausgabe
+## Beispiel-Output
 
 ```
-=============================================
-  RISIKO-REPORT:   BMW.DE
-=============================================
-  Volatilität (p.a.):       28.4 %
-  Value-at-Risk (95%):       2.9 %   pro Tag
-  Maximum Drawdown:         41.2 %
-=============================================
+==================================================
+  PORTFOLIO-RISIKO-REPORT
+==================================================
+  Titel:
+    BMW.DE    Gewicht 25.0 %
+    SAP.DE    Gewicht 25.0 %
+    ALV.DE    Gewicht 25.0 %
+    SIE.DE    Gewicht 25.0 %
+--------------------------------------------------
+  Volatilität (p.a.):             21.4 %
+  Value-at-Risk (95%):             2.1 %  pro Tag
+  Maximum Drawdown:               28.7 %
+  Diversifikationseffekt:         14.3 %
+==================================================
 ```
 
-*(Die Werte sind beispielhaft und hängen vom Abrufzeitpunkt ab.)*
+(Werte sind illustrativ und hängen von Titelauswahl und Zeitraum ab.)
 
-## Technik
+Zusätzlich gibt das Skript die Korrelationsmatrix der Tagesrenditen aus und
+zeichnet ein Histogramm der Portfolio-Tagesrenditen mit eingezeichneter VaR-Schwelle.
 
-- **Sprache:** R
-- **Paket:** quantmod (Kursdatenabruf)
-- **Datenquelle:** Yahoo Finance
+## Methodik & Annahmen
+
+- **Renditen:** einfache Tagesrenditen auf Basis dividenden- und splitbereinigter
+  Schlusskurse (`Ad()`).
+- **Portfoliorendite:** gewichtete Summe der Einzelrenditen; die Gewichte gelten
+  über den gesamten Zeitraum (kein Rebalancing-Modell).
+- **VaR:** rein historisch geschätzt – er unterstellt, dass die vergangene
+  Renditeverteilung die Zukunft beschreibt, und macht keine Verteilungsannahme.
+- **Annualisierung:** Volatilität wird mit √252 hochskaliert (≈ Börsentage pro Jahr).
+- **Datengrundlage:** nur Handelstage, an denen für *alle* Titel Kurse vorliegen
+  (gemeinsame Schnittmenge nach `na.omit`).
 
 ## Mögliche Erweiterungen
 
-- Vergleich mehrerer Aktien nebeneinander in einer Tabelle
-- Export der Ergebnisse als Excel-Report
-- parametrischer und Monte-Carlo-VaR als zusätzliche Methoden
-- Backtesting zur Validierung der VaR-Schätzung
+- Parametrische (Varianz-Kovarianz-) und Monte-Carlo-basierte VaR-Schätzung
+- Backtesting der VaR-Güte (z. B. Ampel-/Kupiec-Test)
+- Marginaler und Komponenten-VaR je Titel
+- Rollierende Kennzahlen über die Zeit
+
+## Autor
+
+Daniel Reiger
